@@ -3,6 +3,9 @@ package cl.duoc.ferreteria_auth.service;
 import cl.duoc.ferreteria_auth.dto.AuthResponse;
 import cl.duoc.ferreteria_auth.dto.LoginRequest;
 import cl.duoc.ferreteria_auth.dto.RegistroRequest;
+import org.springframework.security.authentication.BadCredentialsException;
+import cl.duoc.ferreteria_auth.exception.ReglaNegocioException;
+import cl.duoc.ferreteria_auth.model.Rol;
 import cl.duoc.ferreteria_auth.model.Usuario;
 import cl.duoc.ferreteria_auth.repository.UsuarioRepository;
 import cl.duoc.ferreteria_auth.security.JwtService;
@@ -23,54 +26,56 @@ public class FerreteriaService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(request.getCorreo())
-                .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
+        Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(request.getCorreo().trim())
+                .orElseThrow(() -> new BadCredentialsException("Credenciales inválidas"));
 
         if (!passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
-            throw new RuntimeException("Credenciales inválidas");
+            throw new BadCredentialsException("Credenciales inválidas");
         }
-
-        String token = jwtService.generarToken(usuario);
-        return new AuthResponse(
-                token,
-                usuario.getId(),
-                usuario.getNombre(),
-                usuario.getApellido(),
-                usuario.getCorreo(),
-                usuario.getRol()
-        );
+        if (!Boolean.TRUE.equals(usuario.getActivo())) {
+            throw new BadCredentialsException("Usuario desactivado");
+        }
+        return construirRespuesta(usuario);
     }
 
+    /** Registro público: siempre crea un usuario con rol CLIENTE. */
     public AuthResponse register(RegistroRequest request) {
-        if (usuarioRepository.existsByCorreoIgnoreCase(request.getCorreo())) {
-            throw new RuntimeException("El correo ya está registrado");
+        String correo = request.getCorreo().trim().toLowerCase();
+        if (usuarioRepository.existsByCorreoIgnoreCase(correo)) {
+            throw new ReglaNegocioException("El correo ya está registrado");
         }
-
-        String rolAsignado = (request.getRol() == null)
-                ? "CLIENTE"
-                : request.getRol().name();
+        if (usuarioRepository.existsByRunIgnoreCase(request.getRun().trim())) {
+            throw new ReglaNegocioException("El RUN ya está registrado");
+        }
 
         Usuario nuevo = new Usuario(
                 null,
-                request.getRun(),
-                request.getNombre(),
-                request.getApellido(),
-                request.getCorreo().trim().toLowerCase(),
+                request.getRun().trim(),
+                request.getNombre().trim(),
+                request.getApellido().trim(),
+                correo,
                 passwordEncoder.encode(request.getPassword()),
-                rolAsignado,
+                Rol.CLIENTE.name(),
                 true
         );
+        return construirRespuesta(usuarioRepository.save(nuevo));
+    }
 
-        Usuario guardado = usuarioRepository.save(nuevo);
-        String token = jwtService.generarToken(guardado);
+    /**
+     * Renovación de token: con un token vigente (validado por el filtro JWT) se emite uno nuevo,
+     * releyendo el usuario desde la BD para tomar su rol y estado actuales.
+     */
+    public AuthResponse refresh(String correo) {
+        Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(correo)
+                .orElseThrow(() -> new BadCredentialsException("Usuario no existe"));
+        if (!Boolean.TRUE.equals(usuario.getActivo())) {
+            throw new BadCredentialsException("Usuario desactivado");
+        }
+        return construirRespuesta(usuario);
+    }
 
-        return new AuthResponse(
-                token,
-                guardado.getId(),
-                guardado.getNombre(),
-                guardado.getApellido(),
-                guardado.getCorreo(),
-                guardado.getRol()
-        );
+    private AuthResponse construirRespuesta(Usuario u) {
+        return new AuthResponse(jwtService.generarToken(u), u.getId(), u.getNombre(),
+                u.getApellido(), u.getCorreo(), u.getRol());
     }
 }

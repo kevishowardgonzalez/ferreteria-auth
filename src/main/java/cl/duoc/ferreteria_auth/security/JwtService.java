@@ -1,6 +1,8 @@
 package cl.duoc.ferreteria_auth.security;
 
 import cl.duoc.ferreteria_auth.model.Usuario;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -26,6 +28,7 @@ public class JwtService {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }
 
+    /** Genera un token firmado (HS256) con correo, id, nombre y rol del usuario. */
     public String generarToken(Usuario usuario) {
         Date ahora = new Date();
         return Jwts.builder()
@@ -38,5 +41,24 @@ public class JwtService {
                 .expiration(new Date(ahora.getTime() + expirationMs))
                 .signWith(clave())
                 .compact();
+    }
+
+    /** Verifica firma, emisor y expiración. Lanza JwtException si el token no es válido. */
+    public Claims validar(String token) {
+        return Jwts.parser()
+                .verifyWith(clave())
+                .requireIssuer(issuer)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    public boolean esValido(String token) {
+        try {
+            validar(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
     }
 }
