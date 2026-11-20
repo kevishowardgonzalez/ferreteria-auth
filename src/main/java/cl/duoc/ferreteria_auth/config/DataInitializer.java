@@ -15,7 +15,7 @@ public class DataInitializer implements CommandLineRunner {
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.seed.password:1234}")
+    @Value("${app.seed.password:}")
     private String seedPassword;
 
     public DataInitializer(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
@@ -25,7 +25,7 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (usuarioRepository.count() == 0) {
+        if (usuarioRepository.count() == 0 && seedPassword != null && !seedPassword.isBlank()) {
             usuarioRepository.save(new Usuario(null, "12345678-5", "Kevis", "Admin", "admin@duoc.cl", passwordEncoder.encode(seedPassword), "ADMIN", true));
             usuarioRepository.save(new Usuario(null, "15987456-3", "Javier", "Cruz", "vendedor@duoc.cl", passwordEncoder.encode(seedPassword), "VENDEDOR", true));
             usuarioRepository.save(new Usuario(null, "19876543-2", "Carlos", "Maestro", "carlos@gmail.com", passwordEncoder.encode(seedPassword), "CLIENTE", true));
